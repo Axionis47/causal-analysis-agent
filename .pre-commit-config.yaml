@@ -1,0 +1,8 @@
+repos:
+  - repo: local
+    hooks:
+      - id: detect-sensitive-log-fields
+        name: Block sensitive fields in logger calls
+        entry: (?i)logger\.[a-z_]+\([^\n]*(password|api_key)
+        language: pygrep
+        types: [python]

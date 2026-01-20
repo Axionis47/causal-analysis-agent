@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Causal Analysis Report</title>
+    <style>
+      :root {
+        --ink: #111827;
+        --muted: #6b7280;
+        --accent: #1f6feb;
+        --surface: #f8fafc;
+        --border: #e5e7eb;
+        --success: #15803d;
+        --danger: #b91c1c;
+        --shadow: rgba(15, 23, 42, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        color: var(--ink);
+        background: linear-gradient(180deg, #f5f7fb 0%, #ffffff 40%);
+      }
+
+      .page {
+        max-width: 1024px;
+        margin: 0 auto;
+        padding: 40px 48px 56px;
+      }
+
+      .cover {
+        display: grid;
+        gap: 24px;
+        padding: 32px;
+        border-radius: 16px;
+        background: #ffffff;
+        box-shadow: 0 20px 45px var(--shadow);
+        border: 1px solid var(--border);
+      }
+
+      .cover h1 {
+        font-size: 32px;
+        margin: 0;
+        letter-spacing: -0.02em;
+      }
+
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+      }
+
+      .meta-item {
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+      }
+
+      .meta-item span {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 4px;
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        background: #eef2ff;
+        color: var(--accent);
+      }
+
+      .section {
+        margin-top: 32px;
+        background: #ffffff;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        padding: 24px 28px;
+        box-shadow: 0 12px 24px var(--shadow);
+      }
+
+      .section h2 {
+        margin: 0 0 16px;
+        font-size: 22px;
+      }
+
+      .section h3 {
+        margin: 16px 0 8px;
+        font-size: 16px;
+        color: var(--ink);
+      }
+
+      .text-muted {
+        color: var(--muted);
+      }
+
+      .list {
+        margin: 0;
+        padding-left: 18px;
+      }
+
+      .list li {
+        margin: 6px 0;
+      }
+
+      .table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+        font-size: 14px;
+      }
+
+      .table th,
+      .table td {
+        border: 1px solid var(--border);
+        padding: 10px 12px;
+        text-align: left;
+      }
+
+      .table th {
+        background: #f1f5f9;
+        font-weight: 600;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .badge.pass {
+        background: #dcfce7;
+        color: var(--success);
+      }
+
+      .badge.fail {
+        background: #fee2e2;
+        color: var(--danger);
+      }
+
+      .chart-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+        margin-top: 16px;
+      }
+
+      .chart-card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        background: #ffffff;
+      }
+
+      .chart-card img {
+        width: 100%;
+        border-radius: 8px;
+      }
+
+      .footer {
+        margin-top: 32px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      @media print {
+        body {
+          background: #ffffff;
+        }
+
+        .page {
+          padding: 0;
+        }
+
+        .section,
+        .cover {
+          box-shadow: none;
+          border: 1px solid var(--border);
+        }
+
+        .section,
+        .cover,
+        .chart-card {
+          page-break-inside: avoid;
+        }
+      }
+
+      @page {
+        size: {{ page_size }};
+        margin: {{ page_margin }};
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <section class="cover">
+        <div>
+          <div class="status-pill">{{ status }}</div>
+          <h1>Causal Analysis Report</h1>
+          <p class="text-muted">Executive and technical overview of causal inference results.</p>
+        </div>
+        <div class="meta-grid">
+          <div class="meta-item">
+            <span>Analysis ID</span>
+            <strong>{{ analysis_id }}</strong>
+          </div>
+          <div class="meta-item">
+            <span>Kaggle URL</span>
+            <strong>{{ kaggle_url or "N/A" }}</strong>
+          </div>
+          <div class="meta-item">
+            <span>Generated</span>
+            <strong>{{ generated_at | format_date }}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Executive Summary</h2>
+        <p>{{ summary.overview or "No overview available." }}</p>
+
+        <h3>Key Findings</h3>
+        {% if summary.key_findings %}
+        <ul class="list">
+          {% for finding in summary.key_findings %}
+          <li>{{ finding }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted">No key findings recorded.</p>
+        {% endif %}
+
+        <h3>Recommendations</h3>
+        {% if summary.recommendations %}
+        <ul class="list">
+          {% for rec in summary.recommendations %}
+          <li>{{ rec }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted">No recommendations provided.</p>
+        {% endif %}
+      </section>
+
+      <section class="section">
+        <h2>Treatment Effects</h2>
+        {% if effects %}
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Treatment</th>
+              <th>Outcome</th>
+              <th>Method</th>
+              <th>ATE</th>
+              <th>CI Lower</th>
+              <th>CI Upper</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for effect in effects %}
+            <tr>
+              <td>{{ effect.treatment }}</td>
+              <td>{{ effect.outcome }}</td>
+              <td>{{ effect.method }}</td>
+              <td>{{ effect.ate | format_number }}</td>
+              <td>{{ effect.ci_lower | format_number }}</td>
+              <td>{{ effect.ci_upper | format_number }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">No treatment effects available.</p>
+        {% endif %}
+      </section>
+
+      <section class="section">
+        <h2>Causal Graphs</h2>
+        {% if graphs %}
+        {% for graph in graphs %}
+        <h3>{{ graph.method | upper }} Discovery</h3>
+        <p class="text-muted">Confidence: {{ graph.confidence | format_confidence }}</p>
+
+        <h3>Nodes</h3>
+        {% if graph.nodes %}
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Type</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for node in graph.nodes %}
+            <tr>
+              <td>{{ node.name }}</td>
+              <td>{{ node.node_type }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">No nodes available.</p>
+        {% endif %}
+
+        <h3>Edges</h3>
+        {% if graph.edges %}
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Target</th>
+              <th>Confidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for edge in graph.edges %}
+            <tr>
+              <td>{{ edge.source }}</td>
+              <td>{{ edge.target }}</td>
+              <td>{{ edge.confidence | format_confidence }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">No edges available.</p>
+        {% endif %}
+        {% endfor %}
+        {% else %}
+        <p class="text-muted">No causal graphs available.</p>
+        {% endif %}
+      </section>
+
+      <section class="section">
+        <h2>Validation Results</h2>
+        {% if validation %}
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Method</th>
+              <th>Status</th>
+              <th>Confidence</th>
+              <th>Recommendations</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for test in validation %}
+            <tr>
+              <td>{{ test.method }}</td>
+              <td>
+                <span class="badge {{ "pass" if test.passed else "fail" }}">
+                  {{ test.status_icon }}
+                  {{ "Passed" if test.passed else "Failed" }}
+                </span>
+              </td>
+              <td>{{ test.confidence | format_confidence }}</td>
+              <td>{{ test.recommendations or "N/A" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">No validation results available.</p>
+        {% endif %}
+      </section>
+
+      <section class="section">
+        <h2>Visualizations</h2>
+        {% if chart_images %}
+        <div class="chart-grid">
+          {% for chart in chart_images %}
+          <div class="chart-card">
+            <img src="{{ chart.data_uri }}" alt="{{ chart.alt }}" />
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted">No charts available.</p>
+        {% endif %}
+      </section>
+
+      <section class="section">
+        <h2>Technical Details</h2>
+        <h3>Methodology</h3>
+        {% if technical.methodology %}
+        <p class="text-muted">Discovery Methods: {{ technical.methodology.discovery_methods | join(", ") }}</p>
+        <p class="text-muted">Treatment Methods: {{ technical.methodology.treatment_methods | join(", ") }}</p>
+        {% else %}
+        <p class="text-muted">No methodology details available.</p>
+        {% endif %}
+
+        <h3>Extra Results</h3>
+        {% if technical.sections %}
+        <pre>{{ technical.sections | tojson(indent=2) }}</pre>
+        {% else %}
+        <p class="text-muted">No extra results captured.</p>
+        {% endif %}
+      </section>
+
+      <footer class="footer">
+        Generated at {{ generated_at | format_date }} | {{ system_version }}
+      </footer>
+    </div>
+  </body>
+</html>

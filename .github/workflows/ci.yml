@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install backend dependencies
+        run: cd backend && poetry install --no-interaction
+
+      - name: Backend lint
+        run: cd backend && poetry run ruff check . && poetry run black --check .
+
+      - name: Backend type check
+        run: cd backend && poetry run mypy app
+
+      - name: Backend tests
+        run: cd backend && poetry run pytest -v
+
+      - name: SQL injection audit
+        run: cd backend && poetry run python -m scripts.audit_sql_injection
+
+      - name: Agent tests with coverage
+        run: cd backend && PYTEST_ADDOPTS= poetry run pytest tests/test_agent_*.py tests/test_coverage.py -v --cov=app/agents --cov=app/services/retry.py --cov=app/services/circuit_breaker.py --cov-report=term-missing --cov-report=xml:agent-coverage.xml --junitxml=agent-test-results.xml
+
+      - name: Upload agent test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-test-results
+          path: backend/agent-test-results.xml
+
+      - name: Upload agent coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-coverage
+          path: backend/agent-coverage.xml
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Frontend lint
+        run: cd frontend && npm run lint && npm run format:check
+
+      - name: Frontend type check
+        run: cd frontend && npm run type-check
+
+  agentic-evals:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install backend dependencies
+        run: cd backend && poetry install --no-interaction
+
+      - name: Run agentic evals (quick)
+        run: cd backend && poetry run python -m evals.run --quick --output evals-results.json
+
+      - name: Comment eval results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'backend/evals-results.json';
+            if (!fs.existsSync(path)) {
+              return;
+            }
+            const summary = JSON.parse(fs.readFileSync(path, 'utf8'));
+            const body = [
+              'Agentic evals (quick):',
+              `- avg F1: ${summary.avg_f1.toFixed(2)}`,
+              `- avg ATE bias: ${summary.avg_ate_bias.toFixed(2)}`,
+              `- avg validation pass rate: ${summary.avg_validation_pass_rate.toFixed(2)}`,
+              `- consistency CV: ${summary.consistency_cv.toFixed(2)}`,
+            ].join('\\n');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });

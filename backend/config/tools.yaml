@@ -1,0 +1,45 @@
+discovery:
+  pc:
+    name: pc
+    version: 1.0
+    status: stable
+    min_sample_size: 200
+    supported_data_types: [numerical, categorical, binary]
+    performance_tier: standard
+  ges:
+    name: ges
+    version: 0.9
+    status: beta
+    min_sample_size: 300
+    supported_data_types: [numerical]
+    performance_tier: experimental
+  fci:
+    name: fci
+    version: 0.9
+    status: beta
+    min_sample_size: 300
+    supported_data_types: [numerical]
+    performance_tier: experimental
+
+treatment:
+  propensity_matching:
+    name: propensity_matching
+    version: 1.0
+    status: stable
+    min_sample_size: 200
+    supported_data_types: [numerical, categorical, binary]
+    performance_tier: standard
+  doubly_robust:
+    name: doubly_robust
+    version: 0.9
+    status: beta
+    min_sample_size: 500
+    supported_data_types: [numerical]
+    performance_tier: experimental
+  instrumental_variable:
+    name: instrumental_variable
+    version: 0.9
+    status: beta
+    min_sample_size: 300
+    supported_data_types: [numerical]
+    performance_tier: experimental

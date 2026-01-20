@@ -1,0 +1,108 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker
+
+      - name: Capture previous revisions
+        run: |
+          echo "BACKEND_PREV=$(gcloud run services describe plotpointe-backend --region ${{ secrets.GCP_REGION }} --format 'value(status.latestReadyRevisionName)')" >> $GITHUB_ENV
+          echo "FRONTEND_PREV=$(gcloud run services describe plotpointe-frontend --region ${{ secrets.GCP_REGION }} --format 'value(status.latestReadyRevisionName)')" >> $GITHUB_ENV
+
+      - name: Build and push backend
+        run: |
+          docker build -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-backend:latest ./backend
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-backend:latest
+
+      - name: Build and push worker
+        run: |
+          docker build -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-worker:latest ./backend
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-worker:latest
+
+      - name: Build and push frontend
+        run: |
+          docker build -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-frontend:latest ./frontend
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-frontend:latest
+
+      - name: Deploy backend
+        run: |
+          gcloud run deploy plotpointe-backend \
+            --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-backend:latest \
+            --region ${{ secrets.GCP_REGION }} \
+            --platform managed \
+            --allow-unauthenticated
+
+      - name: Deploy worker
+        run: |
+          gcloud run deploy plotpointe-worker \
+            --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-worker:latest \
+            --region ${{ secrets.GCP_REGION }} \
+            --platform managed
+
+      - name: Deploy frontend
+        run: |
+          gcloud run deploy plotpointe-frontend \
+            --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-frontend:latest \
+            --region ${{ secrets.GCP_REGION }} \
+            --platform managed \
+            --allow-unauthenticated
+
+      - name: Smoke test backend
+        run: |
+          BACKEND_URL=$(gcloud run services describe plotpointe-backend --region ${{ secrets.GCP_REGION }} --format 'value(status.url)')
+          curl -f "$BACKEND_URL/health"
+
+      - name: Blue-green traffic shift (backend)
+        run: |
+          BACKEND_REV=$(gcloud run services describe plotpointe-backend --region ${{ secrets.GCP_REGION }} --format 'value(status.latestCreatedRevisionName)')
+          gcloud run services update-traffic plotpointe-backend --region ${{ secrets.GCP_REGION }} --to-revisions $BACKEND_REV=10
+          sleep 20
+          gcloud run services update-traffic plotpointe-backend --region ${{ secrets.GCP_REGION }} --to-revisions $BACKEND_REV=50
+          sleep 20
+          gcloud run services update-traffic plotpointe-backend --region ${{ secrets.GCP_REGION }} --to-revisions $BACKEND_REV=100
+
+      - name: Smoke test frontend
+        run: |
+          FRONTEND_URL=$(gcloud run services describe plotpointe-frontend --region ${{ secrets.GCP_REGION }} --format 'value(status.url)')
+          curl -f "$FRONTEND_URL"
+
+      - name: Blue-green traffic shift (frontend)
+        run: |
+          FRONTEND_REV=$(gcloud run services describe plotpointe-frontend --region ${{ secrets.GCP_REGION }} --format 'value(status.latestCreatedRevisionName)')
+          gcloud run services update-traffic plotpointe-frontend --region ${{ secrets.GCP_REGION }} --to-revisions $FRONTEND_REV=10
+          sleep 15
+          gcloud run services update-traffic plotpointe-frontend --region ${{ secrets.GCP_REGION }} --to-revisions $FRONTEND_REV=50
+          sleep 15
+          gcloud run services update-traffic plotpointe-frontend --region ${{ secrets.GCP_REGION }} --to-revisions $FRONTEND_REV=100
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          if [ -n "${BACKEND_PREV:-}" ]; then
+            gcloud run services update-traffic plotpointe-backend --region ${{ secrets.GCP_REGION }} --to-revisions $BACKEND_PREV=100
+          fi
+          if [ -n "${FRONTEND_PREV:-}" ]; then
+            gcloud run services update-traffic plotpointe-frontend --region ${{ secrets.GCP_REGION }} --to-revisions $FRONTEND_PREV=100
+          fi

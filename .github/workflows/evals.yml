@@ -1,0 +1,32 @@
+name: Agentic Evals
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  nightly-evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install backend dependencies
+        run: cd backend && poetry install --no-interaction
+
+      - name: Run agentic evals (full)
+        run: cd backend && poetry run python -m evals.run --output evals-results.json
+
+      - name: Archive results
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentic-evals
+          path: backend/evals-results.json

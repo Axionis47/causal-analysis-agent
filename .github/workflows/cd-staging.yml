@@ -1,0 +1,70 @@
+name: CD Staging
+
+on:
+  push:
+    branches: [develop]
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker
+
+      - name: Build and push backend
+        run: |
+          docker build -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-backend-staging:latest ./backend
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-backend-staging:latest
+
+      - name: Build and push worker
+        run: |
+          docker build -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-worker-staging:latest ./backend
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-worker-staging:latest
+
+      - name: Build and push frontend
+        run: |
+          docker build -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-frontend-staging:latest ./frontend
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-frontend-staging:latest
+
+      - name: Deploy backend
+        run: |
+          gcloud run deploy plotpointe-backend-staging \
+            --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-backend-staging:latest \
+            --region ${{ secrets.GCP_REGION }} \
+            --platform managed \
+            --allow-unauthenticated
+
+      - name: Deploy worker
+        run: |
+          gcloud run deploy plotpointe-worker-staging \
+            --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-worker-staging:latest \
+            --region ${{ secrets.GCP_REGION }} \
+            --platform managed
+
+      - name: Deploy frontend
+        run: |
+          gcloud run deploy plotpointe-frontend-staging \
+            --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/plotpointe-frontend-staging:latest \
+            --region ${{ secrets.GCP_REGION }} \
+            --platform managed \
+            --allow-unauthenticated
+
+      - name: Smoke test backend
+        run: |
+          BACKEND_URL=$(gcloud run services describe plotpointe-backend-staging --region ${{ secrets.GCP_REGION }} --format 'value(status.url)')
+          curl -f "$BACKEND_URL/health"
