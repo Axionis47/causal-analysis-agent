@@ -1,5 +1,6 @@
 """LLM abstraction layer with provider routing and fallback."""
 
-from app.llm.router import LLMRouter
+# Note: LLMRouter is imported directly from app.llm.router to avoid circular imports
+# with app.services.llm_cache
 
-__all__ = ["LLMRouter"]
+__all__: list[str] = []

@@ -78,16 +78,36 @@ class EDAAgent(BaseAgent):
             override_warnings = bool(
                 state.get("config", {}).get("override_quality_warnings", False)
             )
-            if quality_warnings:
+
+            # Auto-resolvable warnings are those that preprocessing will fix automatically
+            # These should not block the analysis
+            auto_resolvable_metrics = {"variance", "duplicates"}
+            blocking_warnings = [
+                w for w in quality_warnings
+                if w.get("metric") not in auto_resolvable_metrics
+            ]
+            auto_resolved_warnings = [
+                w for w in quality_warnings
+                if w.get("metric") in auto_resolvable_metrics
+            ]
+
+            if auto_resolved_warnings:
+                agent_logger.info(
+                    "Auto-resolvable warnings detected (will be fixed in preprocessing)",
+                    auto_resolved_count=len(auto_resolved_warnings),
+                    metrics=[w.get("metric") for w in auto_resolved_warnings[:5]],
+                )
+
+            if blocking_warnings:
                 if override_warnings:
                     agent_logger.info(
                         "Override enabled for data quality warnings",
-                        warning_count=len(quality_warnings),
+                        warning_count=len(blocking_warnings),
                     )
                 else:
                     agent_logger.warning(
                         "Data quality warnings detected",
-                        warning_count=len(quality_warnings),
+                        warning_count=len(blocking_warnings),
                     )
             if validation_result and not validation_result.passed:
                 if override_warnings:
@@ -105,9 +125,10 @@ class EDAAgent(BaseAgent):
                         "can_proceed_with_override": validation_result.can_proceed_with_override,
                     },
                 )
-            if quality_warnings and not override_warnings:
+            # Only block on warnings that cannot be auto-resolved
+            if blocking_warnings and not override_warnings:
                 raise AgentFailure(
-                    f"Data quality warnings require override: {quality_warnings}",
+                    f"Data quality warnings require override: {blocking_warnings}",
                     partial_outputs={
                         "quality_warnings": quality_warnings,
                         "passed": validation_result.passed,
@@ -139,9 +160,15 @@ class EDAAgent(BaseAgent):
             agent_instance=self, state=state,
         )
         if llm_payload:
-            treatment_candidates = llm_payload.get("treatment_candidates", treatment_candidates)
-            outcome_candidates = llm_payload.get("outcome_candidates", outcome_candidates)
-            confounder_candidates = llm_payload.get("confounder_candidates", confounder_candidates)
+            treatment_candidates = _normalize_candidates(
+                llm_payload.get("treatment_candidates", treatment_candidates)
+            )
+            outcome_candidates = _normalize_candidates(
+                llm_payload.get("outcome_candidates", outcome_candidates)
+            )
+            confounder_candidates = _normalize_candidates(
+                llm_payload.get("confounder_candidates", confounder_candidates)
+            )
             quality_issues = llm_payload.get("data_quality_issues", quality_issues)
 
         recommended_preprocessing = _preprocessing_recommendations(columns_info, quality_issues)
@@ -198,9 +225,9 @@ class EDAAgent(BaseAgent):
             )
 
             # Update dataset metadata with preprocessed paths
-            dataset_metadata = dict(dataset.metadata) if dataset.metadata else {}
-            dataset_metadata["preprocessed_path"] = str(preprocessed_path)
-            dataset_metadata["preprocessed_gcs_path"] = preprocessed_gcs_path
+            dataset_metadata_dict = dict(dataset.dataset_metadata) if dataset.dataset_metadata else {}
+            dataset_metadata_dict["preprocessed_path"] = str(preprocessed_path)
+            dataset_metadata_dict["preprocessed_gcs_path"] = preprocessed_gcs_path
 
             preprocessing_applied = True
             preprocessed_row_count = len(df_preprocessed)
@@ -215,7 +242,7 @@ class EDAAgent(BaseAgent):
             async with get_session_context() as session:
                 ds = await dataset_crud.get(session, dataset_uuid)
                 if ds is not None:
-                    ds.metadata = dataset_metadata
+                    ds.dataset_metadata = dataset_metadata_dict
 
         # Serialize preprocessing steps for storage
         steps_serialized = [step.to_dict() for step in preprocessing_steps]
@@ -251,7 +278,7 @@ class EDAAgent(BaseAgent):
 
 
 async def _load_dataframe(dataset) -> pd.DataFrame:
-    local_path = infer_local_path(dataset.metadata)
+    local_path = infer_local_path(dataset.dataset_metadata)
     if local_path and local_path.exists():
         return load_dataframe(local_path)
     if dataset.gcs_path:
@@ -362,6 +389,28 @@ def _top_correlations(df: pd.DataFrame) -> list[dict[str, Any]]:
                 results.append({"a": other, "b": col, "value": float(value)})
     results.sort(key=lambda item: item["value"], reverse=True)
     return results[:10]
+
+
+def _normalize_candidates(candidates: list[str | dict[str, Any]]) -> list[str]:
+    """Normalize candidate list to simple column name strings.
+
+    The LLM may return either:
+    - Simple strings: ["Age", "Sex", "Fare"]
+    - Rich dicts: [{"column_name": "Age", "reason": "...", "related_columns": [...]}]
+
+    This function extracts just the column names as strings for database storage.
+    """
+    if not candidates:
+        return []
+    result = []
+    for item in candidates:
+        if isinstance(item, str):
+            result.append(item)
+        elif isinstance(item, dict) and "column_name" in item:
+            result.append(str(item["column_name"]))
+        elif isinstance(item, dict) and "name" in item:
+            result.append(str(item["name"]))
+    return result
 
 
 def _heuristic_candidates(df: pd.DataFrame) -> tuple[list[str], list[str], list[str]]:

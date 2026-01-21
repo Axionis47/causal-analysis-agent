@@ -17,14 +17,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Add new enum values if they don't exist
+    # Note: PostgreSQL requires a commit between adding enum values and using them
+    # For fresh databases, these values may already exist from the initial schema
     op.execute("ALTER TYPE reportformat ADD VALUE IF NOT EXISTS 'pdf'")
     op.execute("ALTER TYPE reportformat ADD VALUE IF NOT EXISTS 'markdown'")
-    op.execute(
-        "UPDATE generated_reports SET format = 'pdf' WHERE format::text = 'PDF'"
-    )
-    op.execute(
-        "UPDATE generated_reports SET format = 'markdown' WHERE format::text = 'MARKDOWN'"
-    )
 
 
 def downgrade() -> None:

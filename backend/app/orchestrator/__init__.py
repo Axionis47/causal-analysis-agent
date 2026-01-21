@@ -4,21 +4,19 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import uuid
+from typing import TYPE_CHECKING
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
-from app.agents.data_acquisition import DataAcquisitionAgent
-from app.agents.discovery import CausalDiscoveryAgent
-from app.agents.eda import EDAAgent
-from app.agents.reporting import ReportGenerationAgent
-from app.agents.treatment import TreatmentEffectsAgent
-from app.agents.validation import ValidationAgent
 from app.crud.analysis import analysis_crud
 from app.db.database import get_session_context
 from app.models.analysis import AnalysisStatus
 from app.orchestrator.graph import build_graph
 from app.orchestrator.state import AnalysisState
 from app.services.tracing import traced
+
+if TYPE_CHECKING:
+    pass  # Agents imported at runtime to avoid circular imports
 
 
 @traced("analysis.run", run_type="chain")
@@ -56,6 +54,15 @@ async def run_causal_analysis(
         "errors": [],
         "extra_results": {},
     }
+
+    # Import agents here to avoid circular imports
+    # (agents.base imports orchestrator.state, which would trigger this __init__)
+    from app.agents.data_acquisition import DataAcquisitionAgent
+    from app.agents.discovery import CausalDiscoveryAgent
+    from app.agents.eda import EDAAgent
+    from app.agents.reporting import ReportGenerationAgent
+    from app.agents.treatment import TreatmentEffectsAgent
+    from app.agents.validation import ValidationAgent
 
     data_agent = DataAcquisitionAgent()
     eda_agent = EDAAgent()

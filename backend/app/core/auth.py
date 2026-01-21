@@ -16,7 +16,12 @@ from app.core.logging import bind_contextvars
 from app.schemas.auth import TokenData
 
 # Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Using bcrypt with truncate_error=False to handle bcrypt 4.1+ compatibility
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+    bcrypt__rounds=12,
+)
 
 
 def get_password_hash(password: str) -> str:
@@ -87,12 +92,12 @@ def get_current_user(request: Request, token: str = Depends(oauth2_scheme)) -> u
 
 def get_current_user_optional(
     request: Request,
-    token: str | None = Query(default=None),
+    auth_token: str | None = Query(default=None, alias="token"),
     header_token: str | None = Depends(oauth2_scheme_optional),
 ) -> uuid.UUID:
     """Allow JWT token via query or Authorization header (for SSE)."""
-    if token:
-        user_id = decode_access_token(token).user_id
+    if auth_token:
+        user_id = decode_access_token(auth_token).user_id
         request.state.user_id = user_id
         bind_contextvars(user_id=str(user_id))
         sentry_sdk.set_user({"id": str(user_id)})

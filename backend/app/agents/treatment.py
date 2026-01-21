@@ -331,9 +331,9 @@ def _load_dataframe(dataset) -> pd.DataFrame:
 
     # If preprocessed data not available via sync loader, try async GCS download
     # This handles cases where we're not in an async context but need GCS data
-    if dataset.metadata:
-        preprocessed_path = dataset.metadata.get("preprocessed_path")
-        preprocessed_gcs_path = dataset.metadata.get("preprocessed_gcs_path")
+    if dataset.dataset_metadata:
+        preprocessed_path = dataset.dataset_metadata.get("preprocessed_path")
+        preprocessed_gcs_path = dataset.dataset_metadata.get("preprocessed_gcs_path")
 
         if preprocessed_path and preprocessed_gcs_path:
             pp_path = Path(preprocessed_path)
@@ -361,7 +361,7 @@ def _load_dataframe(dataset) -> pd.DataFrame:
                     if pp_path.exists():
                         logger.info(
                             "Downloaded and loading preprocessed data from GCS for treatment effects",
-                            path=str(pp_path),
+                            file_path=str(pp_path),
                         )
                         return load_dataframe(pp_path)
                 except Exception as exc:
@@ -371,29 +371,144 @@ def _load_dataframe(dataset) -> pd.DataFrame:
                     )
 
     # Fall back to raw data
-    local_path = infer_local_path(dataset.metadata)
+    local_path = infer_local_path(dataset.dataset_metadata)
     if local_path and local_path.exists():
         logger.info(
             "Falling back to raw data for treatment effects",
-            path=str(local_path),
+            file_path=str(local_path),
         )
         return load_dataframe(local_path)
     raise ValueError("No dataset path available for treatment effects (checked local and GCS)")
 
 
+def _resolve_column_name(col_name: str, df: pd.DataFrame) -> str | None:
+    """Resolve a column name that may have been transformed during preprocessing.
+
+    Handles cases like:
+    - Exact match: "Sex" → "Sex"
+    - One-hot encoded: "Sex" → "Sex_male" (when Sex column was dropped and replaced)
+    - Case-insensitive: "sex" → "Sex"
+
+    Returns the actual column name in the dataframe, or None if not found.
+    """
+    # Exact match
+    if col_name in df.columns:
+        return col_name
+
+    # Case-insensitive match
+    col_lower = col_name.lower()
+    for col in df.columns:
+        if col.lower() == col_lower:
+            return col
+
+    # One-hot encoded column: look for columns starting with "{col_name}_"
+    # This handles cases where "Sex" becomes "Sex_male" after one-hot encoding
+    encoded_cols = [c for c in df.columns if c.startswith(f"{col_name}_")]
+    if len(encoded_cols) == 1:
+        # Single encoded column (binary variable after drop_first=True)
+        logger.info(
+            "Resolved one-hot encoded column",
+            original=col_name,
+            resolved=encoded_cols[0],
+        )
+        return encoded_cols[0]
+    elif len(encoded_cols) > 1:
+        # Multiple encoded columns - can't use directly for treatment/outcome
+        # Return the first one with a warning
+        logger.warning(
+            "Multiple one-hot encoded columns found, using first",
+            original=col_name,
+            encoded_cols=encoded_cols[:5],
+        )
+        return encoded_cols[0]
+
+    # Case-insensitive one-hot encoded match
+    for col in df.columns:
+        if col.lower().startswith(f"{col_lower}_"):
+            logger.info(
+                "Resolved one-hot encoded column (case-insensitive)",
+                original=col_name,
+                resolved=col,
+            )
+            return col
+
+    return None
+
+
 def _select_pairs(df: pd.DataFrame, state) -> list[tuple[str, str]]:
+    """Select treatment/outcome pairs for causal effect estimation.
+
+    Priority order:
+    1. User-specified treatment_variable and outcome_variable from config
+    2. EDA-suggested treatment_candidates and outcome_candidates
+    3. First two numeric columns as fallback
+
+    Handles column name resolution for preprocessed data where columns may have been:
+    - One-hot encoded (e.g., "Sex" → "Sex_male")
+    - Renamed or transformed
+    """
+    config = state.get("config", {})
     candidates = state.get("data_characteristics", {})
+
+    pairs: list[tuple[str, str]] = []
+
+    # Priority 1: User-specified variables in config
+    user_treatment = config.get("treatment_variable")
+    user_outcome = config.get("outcome_variable")
+
+    if user_treatment and user_outcome:
+        # Try to resolve column names (handles one-hot encoding, case differences)
+        resolved_treatment = _resolve_column_name(user_treatment, df)
+        resolved_outcome = _resolve_column_name(user_outcome, df)
+
+        if resolved_treatment and resolved_outcome and resolved_treatment != resolved_outcome:
+            pairs.append((resolved_treatment, resolved_outcome))
+            logger.info(
+                "Using user-specified treatment/outcome pair",
+                original_treatment=user_treatment,
+                original_outcome=user_outcome,
+                resolved_treatment=resolved_treatment,
+                resolved_outcome=resolved_outcome,
+            )
+            return pairs
+        else:
+            logger.warning(
+                "User-specified treatment/outcome not found in data, falling back to candidates",
+                treatment=user_treatment,
+                outcome=user_outcome,
+                resolved_treatment=resolved_treatment,
+                resolved_outcome=resolved_outcome,
+                available_columns=list(df.columns[:15]),
+            )
+
+    # Priority 2: EDA-suggested candidates (also resolve column names)
     treatments = candidates.get("treatment_candidates", [])
     outcomes = candidates.get("outcome_candidates", [])
-    pairs: list[tuple[str, str]] = []
     for treatment in treatments[:1]:
         for outcome in outcomes[:1]:
-            if treatment in df.columns and outcome in df.columns and treatment != outcome:
-                pairs.append((treatment, outcome))
+            resolved_t = _resolve_column_name(treatment, df)
+            resolved_o = _resolve_column_name(outcome, df)
+            if resolved_t and resolved_o and resolved_t != resolved_o:
+                pairs.append((resolved_t, resolved_o))
+                logger.info(
+                    "Using EDA-suggested treatment/outcome pair",
+                    original_treatment=treatment,
+                    original_outcome=outcome,
+                    resolved_treatment=resolved_t,
+                    resolved_outcome=resolved_o,
+                )
+
+    # Priority 3: Fallback to first two numeric columns
     if not pairs:
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         if len(numeric_cols) >= 2:
             pairs.append((numeric_cols[0], numeric_cols[1]))
+            logger.info(
+                "Using fallback numeric columns for treatment/outcome",
+                treatment=numeric_cols[0],
+                outcome=numeric_cols[1],
+            )
+
     return pairs
 
 
@@ -427,48 +542,59 @@ def _estimate_psm(df: pd.DataFrame, treatment: str, outcome: str, confounders: l
     except Exception:
         return None
 
-    num_simulations = getattr(settings, "BOOTSTRAP_NUM_SIMULATIONS", DEFAULT_BOOTSTRAP_SIMULATIONS)
-    confidence_level = getattr(settings, "BOOTSTRAP_CONFIDENCE_LEVEL", DEFAULT_BOOTSTRAP_CONFIDENCE_LEVEL)
+    try:
+        num_simulations = getattr(settings, "BOOTSTRAP_NUM_SIMULATIONS", DEFAULT_BOOTSTRAP_SIMULATIONS)
+        confidence_level = getattr(settings, "BOOTSTRAP_CONFIDENCE_LEVEL", DEFAULT_BOOTSTRAP_CONFIDENCE_LEVEL)
 
-    model = CausalModel(data=df, treatment=treatment, outcome=outcome, common_causes=confounders)
-    estimand = model.identify_effect()
-    estimate = model.estimate_effect(estimand, method_name="backdoor.propensity_score_matching")
-    ate = float(estimate.value)
+        model = CausalModel(data=df, treatment=treatment, outcome=outcome, common_causes=confounders)
+        estimand = model.identify_effect()
+        estimate = model.estimate_effect(estimand, method_name="backdoor.propensity_score_matching")
+        ate = float(estimate.value)
 
-    # Use bootstrap confidence interval
-    ci_lower, ci_upper, bootstrap_samples = _bootstrap_confidence_interval(
-        df, treatment, outcome, confounders,
-        method_name="backdoor.propensity_score_matching",
-        num_simulations=num_simulations,
-        confidence_level=confidence_level,
-    )
+        # Use bootstrap confidence interval
+        ci_lower, ci_upper, bootstrap_samples = _bootstrap_confidence_interval(
+            df, treatment, outcome, confounders,
+            method_name="backdoor.propensity_score_matching",
+            num_simulations=num_simulations,
+            confidence_level=confidence_level,
+        )
 
-    # Fallback to DoWhy's default CI if bootstrap fails
-    if ci_lower is None or ci_upper is None:
-        ci = _confidence_interval(estimate)
-        ci_lower, ci_upper = ci[0], ci[1]
-        bootstrap_samples = None
+        # Fallback to DoWhy's default CI if bootstrap fails
+        if ci_lower is None or ci_upper is None:
+            ci = _confidence_interval(estimate)
+            ci_lower, ci_upper = ci[0], ci[1]
+            bootstrap_samples = None
 
-    bootstrap_std = float(np.std(bootstrap_samples)) if bootstrap_samples is not None else None
+        bootstrap_std = float(np.std(bootstrap_samples)) if bootstrap_samples is not None else None
 
-    return {
-        "ate": ate,
-        "ate_ci_lower": ci_lower,
-        "ate_ci_upper": ci_upper,
-        "confidence_interval": {
-            "method": "bootstrap",
-            "lower": ci_lower,
-            "upper": ci_upper,
-            "num_simulations": num_simulations,
-            "confidence_level": confidence_level,
-            "samples": bootstrap_samples[:100] if bootstrap_samples is not None else None,
-        },
-        "bootstrap_std": bootstrap_std,
-        "att": None,
-        "sample_size": {"total": len(df)},
-        "assumptions_checked": {"positivity": True},
-        "confidence_score": 0.8 if ci_lower is not None and ci_upper is not None else 0.6,
-    }
+        return {
+            "ate": ate,
+            "ate_ci_lower": ci_lower,
+            "ate_ci_upper": ci_upper,
+            "confidence_interval": {
+                "method": "bootstrap",
+                "lower": ci_lower,
+                "upper": ci_upper,
+                "num_simulations": num_simulations,
+                "confidence_level": confidence_level,
+                "samples": bootstrap_samples[:100] if bootstrap_samples is not None else None,
+            },
+            "bootstrap_std": bootstrap_std,
+            "att": None,
+            "sample_size": {"total": len(df)},
+            "assumptions_checked": {"positivity": True},
+            "confidence_score": 0.8 if ci_lower is not None and ci_upper is not None else 0.6,
+        }
+    except Exception as exc:
+        # Log the error and return None to allow fallback to other methods
+        # Common exceptions: "Propensity score methods are applicable only for binary treatments"
+        logger.info(
+            "Propensity score matching failed, will try other methods",
+            treatment=treatment,
+            outcome=outcome,
+            error=str(exc),
+        )
+        return None
 
 
 @traced("tool.treatment.doubly_robust")

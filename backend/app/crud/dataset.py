@@ -39,18 +39,38 @@ class CRUDDataset(CRUDBase[Dataset]):
     async def get_by_cache_key(
         self, db: AsyncSession, cache_key: str
     ) -> Dataset | None:
-        """Get dataset by cache key (for cache lookup)."""
+        """Get dataset by cache key (for cache lookup).
+
+        Returns the most recent dataset with a valid gcs_path if available,
+        otherwise returns the most recent dataset with this cache_key.
+        Handles multiple datasets with the same cache_key gracefully.
+        """
+        # First try to find a dataset with a valid gcs_path
         result = await db.execute(
-            select(Dataset).where(Dataset.cache_key == cache_key)
+            select(Dataset)
+            .where(Dataset.cache_key == cache_key)
+            .where(Dataset.gcs_path.isnot(None))
+            .where(Dataset.gcs_path != "")
+            .order_by(Dataset.created_at.desc())
         )
-        return result.scalar_one_or_none()
+        dataset = result.scalars().first()
+        if dataset:
+            return dataset
+
+        # Fall back to any dataset with this cache_key
+        result = await db.execute(
+            select(Dataset)
+            .where(Dataset.cache_key == cache_key)
+            .order_by(Dataset.created_at.desc())
+        )
+        return result.scalars().first()
 
     async def get_cached(
         self, db: AsyncSession, cache_key: str
     ) -> Dataset | None:
-        """Get cached dataset if not expired."""
+        """Get cached dataset if not expired and has valid gcs_path."""
         dataset = await self.get_by_cache_key(db, cache_key)
-        if dataset and dataset.cache_expires_at:
+        if dataset and dataset.cache_expires_at and dataset.gcs_path:
             if dataset.cache_expires_at > datetime.now(timezone.utc):
                 return dataset
         return None

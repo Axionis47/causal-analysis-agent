@@ -12,6 +12,7 @@ from app.models.data_understanding import DataUnderstanding
 from app.models.dataset import Dataset
 from app.models.generated_report import GeneratedReport, ReportFormat, ReportType
 from app.models.llm_log import LLMLog
+from app.models.sensitivity_analysis import SensitivityAnalysis
 from app.models.treatment_effect import TreatmentEffect, TreatmentMethod
 from app.models.user import User
 from app.models.user_credential import CredentialProvider, UserCredential
@@ -44,6 +45,8 @@ __all__ = [
     # TreatmentEffect
     "TreatmentEffect",
     "TreatmentMethod",
+    # SensitivityAnalysis
+    "SensitivityAnalysis",
     # ValidationResult
     "ValidationResult",
     "ValidationType",

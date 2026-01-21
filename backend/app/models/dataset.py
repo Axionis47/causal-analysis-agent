@@ -86,7 +86,7 @@ class Dataset(BaseModel):
     )
 
     # Dataset metadata and characteristics (JSONB)
-    metadata: Mapped[dict[str, Any]] = mapped_column(
+    dataset_metadata: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         default=dict,
         nullable=False,

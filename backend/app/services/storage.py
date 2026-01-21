@@ -20,14 +20,24 @@ def ensure_local_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
+def _get_gcs_project() -> Optional[str]:
+    """Get the GCP project ID from settings."""
+    return settings.VERTEX_AI_PROJECT or None
+
+
 def gcs_available() -> bool:
     if not settings.GCS_BUCKET_NAME:
         return False
+    project = _get_gcs_project()
+    if not project:
+        return False
     try:
-        from google.cloud import storage  # noqa: F401
+        from google.cloud import storage
+        # Actually try to create a client to verify credentials are available
+        storage.Client(project=project)
+        return True
     except Exception:
         return False
-    return True
 
 
 async def upload_file(local_path: Path, bucket_name: str, destination: str) -> Optional[str]:
@@ -35,11 +45,20 @@ async def upload_file(local_path: Path, bucket_name: str, destination: str) -> O
         return None
     from google.cloud import storage
 
-    client = storage.Client()
+    project = _get_gcs_project()
+    client = storage.Client(project=project)
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(destination)
     blob.upload_from_filename(str(local_path))
     return f"gs://{bucket_name}/{destination}"
+
+
+async def upload_to_gcs(local_path: Path, destination: str) -> Optional[str]:
+    """Upload a file to the default GCS bucket.
+
+    Convenience wrapper around upload_file that uses the configured bucket.
+    """
+    return await upload_file(local_path, settings.GCS_BUCKET_NAME, destination)
 
 
 async def download_to_path(gcs_path: str, local_path: Path) -> Path:
@@ -52,7 +71,8 @@ async def download_to_path(gcs_path: str, local_path: Path) -> Path:
     _, rest = gcs_path.split("gs://", 1)
     bucket_name, blob_name = rest.split("/", 1)
 
-    client = storage.Client()
+    project = _get_gcs_project()
+    client = storage.Client(project=project)
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
     ensure_local_dir(local_path.parent)
@@ -77,7 +97,8 @@ def generate_signed_url(gcs_path: str, expiration_minutes: int = 60) -> Optional
 
         _, rest = gcs_path.split("gs://", 1)
         bucket_name, blob_name = rest.split("/", 1)
-        client = storage.Client()
+        project = _get_gcs_project()
+        client = storage.Client(project=project)
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
 

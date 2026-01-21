@@ -28,7 +28,7 @@ from app.crud.analysis_version import analysis_version_crud
 from app.crud.audit_log import log_analysis_action
 from app.db.database import get_async_session
 from app.models.audit_log import AuditAction
-from app.main import limiter
+from app.core.rate_limit import limiter
 from app.models.analysis import Analysis, AnalysisStatus
 from app.schemas.analysis import (
     AnalysisCreate,
@@ -294,6 +294,7 @@ async def create_analysis(
             description=f"Created analysis for {analysis_in.kaggle_url}",
         )
     except SQLAlchemyError as exc:
+        logger.exception("Database error while creating analysis: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error while creating analysis",
@@ -412,12 +413,6 @@ async def get_analysis(
     "/{id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete an analysis",
-    responses={
-        204: {"description": "Analysis deleted successfully"},
-        401: {"description": "Authentication required"},
-        403: {"description": "Not authorized to delete this analysis"},
-        404: {"description": "Analysis not found"},
-    },
 )
 async def delete_analysis(
     id: uuid.UUID,
@@ -1144,7 +1139,7 @@ async def preview_preprocessing(
         )
 
     dataset = analysis.datasets[0]
-    local_path = infer_local_path(dataset.metadata)
+    local_path = infer_local_path(dataset.dataset_metadata)
     if not local_path or not local_path.exists():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

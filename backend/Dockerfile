@@ -29,13 +29,14 @@ RUN pip install poetry==1.7.1
 WORKDIR /app
 
 # Copy poetry files
-COPY pyproject.toml ./
+COPY pyproject.toml poetry.lock ./
 
 # Configure poetry to not create virtual environment
 RUN poetry config virtualenvs.create false
 
-# Install dependencies
-RUN poetry install --no-root --no-interaction --no-ansi || pip install fastapi uvicorn[standard] sqlalchemy[asyncio] asyncpg redis celery[redis] pydantic pydantic-settings
+# Export requirements and install with pip (handles binary wheel installation better)
+RUN poetry export -f requirements.txt --without-hashes -o requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .

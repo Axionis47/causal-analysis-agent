@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.database import get_session_context
 from app.llm.cost_router import PromptComplexity, classify_prompt_complexity, select_model_for_complexity
-from app.llm.providers import AnthropicProvider, OpenAIProvider, VertexAIProvider
+from app.llm.providers import AnthropicProvider, MockProvider, OpenAIProvider, VertexAIProvider
 from app.llm.types import LLMProvider, LLMResponse
 from app.models.llm_log import LLMLog
 from app.services.circuit_breaker import CircuitBreaker
@@ -33,6 +33,7 @@ class LLMRouter:
             "vertex": VertexAIProvider(),
             "openai": OpenAIProvider(),
             "anthropic": AnthropicProvider(),
+            "mock": MockProvider(),
         }
         self._breaker = CircuitBreaker(
             failure_threshold=settings.LLM_CIRCUIT_BREAKER_THRESHOLD,
@@ -362,12 +363,25 @@ class LLMRouter:
         return None
 
     def _parse_structured_response(self, provider: str, response: LLMResponse) -> dict[str, Any] | None:
+        text = response.text.strip()
+
+        # Strip markdown code blocks (Gemini often wraps JSON in ```json ... ```)
+        if text.startswith("```"):
+            # Find the end of the first line (```json or just ```)
+            first_newline = text.find("\n")
+            if first_newline != -1:
+                text = text[first_newline + 1:]
+            # Remove trailing ```
+            if text.endswith("```"):
+                text = text[:-3].strip()
+
         try:
-            return json.loads(response.text)
+            return json.loads(text)
         except json.JSONDecodeError:
             logger.warning(
                 "LLM provider returned non-JSON response",
                 provider=provider,
+                response_preview=text[:200] if text else "(empty)",
             )
             return None
 

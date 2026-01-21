@@ -35,7 +35,7 @@ class VertexAIProvider(BaseProvider):
 
     name = "vertex"
 
-    def __init__(self, model_name: str = "gemini-1.0-pro") -> None:
+    def __init__(self, model_name: str = "gemini-2.0-flash") -> None:
         self._model_name = model_name
         self._models: dict[str, Any] = {}
 
@@ -141,4 +141,42 @@ class AnthropicProvider(BaseProvider):
             prompt_tokens=usage.input_tokens if usage else None,
             completion_tokens=usage.output_tokens if usage else None,
             total_tokens=(usage.input_tokens + usage.output_tokens) if usage else None,
+        )
+
+
+class MockProvider(BaseProvider):
+    """Mock provider for testing without real API keys."""
+
+    name = "mock"
+
+    async def complete(self, prompt: str, **kwargs: Any) -> LLMResponse:
+        import json
+        # Generate reasonable mock responses based on prompt content
+        if "executive summary" in prompt.lower():
+            response = json.dumps({
+                "overview": "This analysis examines causal relationships in the dataset.",
+                "key_findings": ["Treatment effect detected", "Moderate confidence in results"],
+                "recommendations": ["Collect more data", "Validate assumptions"]
+            })
+        elif "select" in prompt.lower() and "file" in prompt.lower():
+            response = json.dumps({"selected_file": "train.csv", "reasoning": "Main training dataset"})
+        elif "causal" in prompt.lower() and "graph" in prompt.lower():
+            response = json.dumps({"edges": [], "method": "PC", "confidence": 0.7})
+        elif "treatment" in prompt.lower() or "effect" in prompt.lower():
+            response = json.dumps({
+                "treatment": "Pclass",
+                "outcome": "Survived",
+                "ate": -0.15,
+                "confidence_interval": [-0.2, -0.1],
+                "method": "propensity_score"
+            })
+        else:
+            response = json.dumps({"result": "mock_response", "status": "success"})
+
+        return LLMResponse(
+            text=response,
+            raw={"mock": True},
+            prompt_tokens=len(prompt.split()),
+            completion_tokens=len(response.split()),
+            total_tokens=len(prompt.split()) + len(response.split()),
         )

@@ -36,17 +36,17 @@ def load_preprocessed_dataframe(dataset: "Dataset") -> pd.DataFrame | None:
         Preprocessed DataFrame if available, None otherwise.
         Caller should fall back to raw data if None is returned.
     """
-    if not dataset.metadata:
+    if not dataset.dataset_metadata:
         return None
 
-    preprocessed_path = dataset.metadata.get("preprocessed_path")
+    preprocessed_path = dataset.dataset_metadata.get("preprocessed_path")
     if not preprocessed_path:
         return None
 
     pp_path = Path(preprocessed_path)
     if not pp_path.exists():
         # Try to download from GCS if path doesn't exist locally
-        preprocessed_gcs_path = dataset.metadata.get("preprocessed_gcs_path")
+        preprocessed_gcs_path = dataset.dataset_metadata.get("preprocessed_gcs_path")
         if preprocessed_gcs_path:
             try:
                 # Lazy import to avoid circular dependencies
@@ -73,7 +73,7 @@ def load_preprocessed_dataframe(dataset: "Dataset") -> pd.DataFrame | None:
     if not pp_path.exists():
         return None
 
-    logger.info("Loading preprocessed dataframe", path=str(pp_path))
+    logger.info("Loading preprocessed dataframe from %s", str(pp_path))
     return load_dataframe(pp_path)
 
 
@@ -86,17 +86,17 @@ async def load_preprocessed_dataframe_async(dataset: "Dataset") -> pd.DataFrame 
     Returns:
         Preprocessed DataFrame if available, None otherwise.
     """
-    if not dataset.metadata:
+    if not dataset.dataset_metadata:
         return None
 
-    preprocessed_path = dataset.metadata.get("preprocessed_path")
+    preprocessed_path = dataset.dataset_metadata.get("preprocessed_path")
     if not preprocessed_path:
         return None
 
     pp_path = Path(preprocessed_path)
     if not pp_path.exists():
         # Try to download from GCS
-        preprocessed_gcs_path = dataset.metadata.get("preprocessed_gcs_path")
+        preprocessed_gcs_path = dataset.dataset_metadata.get("preprocessed_gcs_path")
         if preprocessed_gcs_path:
             try:
                 from app.services.storage import download_to_path
@@ -112,5 +112,5 @@ async def load_preprocessed_dataframe_async(dataset: "Dataset") -> pd.DataFrame 
     if not pp_path.exists():
         return None
 
-    logger.info("Loading preprocessed dataframe (async)", path=str(pp_path))
+    logger.info("Loading preprocessed dataframe (async) from %s", str(pp_path))
     return load_dataframe(pp_path)

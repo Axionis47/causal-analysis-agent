@@ -11,7 +11,12 @@ TEMPLATE = (
     "Columns: {columns}\n"
     "Top correlations: {correlations}\n"
     "Quality issues: {quality_issues}\n"
-    "Return JSON with treatment_candidates, outcome_candidates, confounder_candidates, data_quality_issues."
+    "Return JSON with these fields:\n"
+    '- treatment_candidates: array of column name strings, e.g. ["Age", "Sex"]\n'
+    '- outcome_candidates: array of column name strings\n'
+    '- confounder_candidates: array of column name strings\n'
+    "- data_quality_issues: array of issue objects\n"
+    "IMPORTANT: The candidate arrays must contain simple strings (column names only), not objects."
 )
 
 

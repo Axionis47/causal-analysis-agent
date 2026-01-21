@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -289,29 +289,13 @@ async def list_shares(
     "/analyses/{analysis_id}/share/{token}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Revoke share link",
-    responses={
-        204: {"description": "Share link revoked successfully"},
-        401: {"description": "Authentication required"},
-        403: {"description": "Not authorized to revoke this share"},
-        404: {
-            "description": "Analysis or share link not found",
-            "content": {
-                "application/json": {
-                    "examples": {
-                        "analysis": {"value": {"detail": "Analysis not found"}},
-                        "share": {"value": {"detail": "Share link not found"}},
-                    }
-                }
-            },
-        },
-    },
 )
 async def revoke_share(
     analysis_id: uuid.UUID,
     token: str,
     db: AsyncSession = Depends(get_async_session),
     user_id: uuid.UUID = Depends(get_current_user),
-) -> None:
+) -> Response:
     """
     Revoke a share link.
 
@@ -359,6 +343,8 @@ async def revoke_share(
         analysis_id=str(analysis_id),
         share_token=token[:8],
     )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(

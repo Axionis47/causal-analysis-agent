@@ -6,7 +6,7 @@ import uuid
 from typing import Any
 
 import bleach
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -436,18 +436,12 @@ async def update_comment(
     "/comments/{comment_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete comment",
-    responses={
-        204: {"description": "Comment deleted successfully"},
-        401: {"description": "Authentication required"},
-        403: {"description": "Not authorized to delete this comment"},
-        404: {"description": "Comment not found"},
-    },
 )
 async def delete_comment(
     comment_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_session),
     user_id: uuid.UUID = Depends(get_current_user),
-) -> None:
+) -> Response:
     """
     Delete a comment.
 
@@ -484,6 +478,8 @@ async def delete_comment(
         "Comment deleted",
         comment_id=str(comment_id),
     )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def _comment_to_response(comment: AnalysisComment) -> CommentResponse:

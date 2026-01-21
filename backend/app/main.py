@@ -6,10 +6,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sentry_sdk.integrations.fastapi import FastApiIntegration
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from slowapi.util import get_remote_address
 
 from app import __version__
 from app.api.v1.admin import router as admin_router
@@ -24,7 +23,9 @@ from app.core.config import settings
 from app.core.csrf import CSRFMiddleware, get_csrf_token
 from app.core.logging import configure_logging, get_release, sentry_before_send
 from app.core.middleware import RequestIDMiddleware
+from app.core.rate_limit import limiter
 from app.core.security_headers import SecurityHeadersMiddleware
+from app.db.database import _set_main_loop
 
 configure_logging()
 
@@ -41,25 +42,6 @@ if settings.SENTRY_DSN:
     sentry_sdk.set_tag("environment", settings.ENVIRONMENT)
     sentry_sdk.set_tag("version", __version__)
 
-
-def get_user_id_from_request(request: Request) -> str:
-    """
-    Get user ID from request state for per-user rate limiting.
-
-    Falls back to IP address if user_id is not set (unauthenticated requests).
-    """
-    user_id = getattr(request.state, "user_id", None)
-    if user_id is not None:
-        return str(user_id)
-    return get_remote_address(request)
-
-
-# Initialize SlowAPI rate limiter with per-user key function
-limiter = Limiter(
-    key_func=get_user_id_from_request,
-    storage_uri=settings.RATE_LIMIT_STORAGE_URL,
-    enabled=settings.RATE_LIMIT_ENABLED,
-)
 
 OPENAPI_TAGS = [
     {
@@ -261,18 +243,44 @@ app.include_router(users_router)
 app.include_router(versions_router)
 
 
+@app.on_event("startup")
+async def startup_event() -> None:
+    """Initialize the main event loop reference for database sessions."""
+    _set_main_loop()
+
+
+def _serialize_validation_errors(errors: list) -> list:
+    """Serialize validation errors to JSON-safe format."""
+    result = []
+    for error in errors:
+        serialized = {}
+        for key, value in error.items():
+            if isinstance(value, bytes):
+                serialized[key] = value.decode("utf-8", errors="replace")
+            elif isinstance(value, (list, tuple)):
+                serialized[key] = [
+                    v.decode("utf-8", errors="replace") if isinstance(v, bytes) else v
+                    for v in value
+                ]
+            else:
+                serialized[key] = value
+        result.append(serialized)
+    return result
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     """Return 400 for invalid Kaggle URLs, 422 for other validation errors."""
-    for error in exc.errors():
+    errors = _serialize_validation_errors(exc.errors())
+    for error in errors:
         loc = error.get("loc", [])
         if loc and loc[-1] == "kaggle_url":
             if request.url.path.endswith("/api/v1/analyses/preview"):
                 return JSONResponse(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    content={"detail": exc.errors()},
+                    content={"detail": errors},
                 )
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -280,7 +288,7 @@ async def validation_exception_handler(
             )
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": exc.errors()},
+        content={"detail": errors},
     )
 
 

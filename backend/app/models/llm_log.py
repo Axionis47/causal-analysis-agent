@@ -66,7 +66,7 @@ class LLMLog(BaseModel):
         Text,
         nullable=True,
     )
-    metadata: Mapped[dict[str, Any]] = mapped_column(
+    log_metadata: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         default=dict,
         nullable=False,

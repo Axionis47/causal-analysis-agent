@@ -73,7 +73,7 @@ class DataAcquisitionAgent(BaseAgent):
                         "cache_key": cache_key,
                         "cache_expires_at": cached.cache_expires_at,
                         "downloaded_at": cached.downloaded_at,
-                        "metadata": cached.metadata,
+                        "dataset_metadata": cached.dataset_metadata,
                         "characteristics": cached.characteristics,
                     },
                 )

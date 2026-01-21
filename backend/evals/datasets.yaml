@@ -1,0 +1,589 @@
+# Dataset Registry for Causal Analysis E2E Evaluation
+# Each dataset is a verified public Kaggle dataset with domain-expected ground truth
+# for validating analysis results without dataset-specific code changes.
+
+datasets:
+  # Dataset 1: Titanic - Classic binary classification with missing values
+  titanic:
+    dataset_id: titanic
+    name: "Titanic - Machine Learning from Disaster"
+    kaggle_url: "https://www.kaggle.com/c/titanic"
+    description: >
+      Classic Kaggle competition dataset for predicting passenger survival.
+      Tests missing value handling (22% Age missing), categorical encoding,
+      and class imbalance scenarios.
+    metadata:
+      rows: 891
+      columns: 12
+      size_mb: 0.06
+      kaggle_type: "competition"
+      expected_file: "train.csv"
+    causal_structure:
+      treatment: "Pclass"
+      outcome: "Survived"
+      confounders:
+        - "Age"
+        - "Sex"
+        - "Fare"
+        - "Embarked"
+      expected_edges:
+        - { source: "Pclass", target: "Fare" }
+        - { source: "Pclass", target: "Survived" }
+        - { source: "Age", target: "Survived" }
+        - { source: "Sex", target: "Survived" }
+        - { source: "Fare", target: "Survived" }
+      graph_description: >
+        Passenger class determines fare and directly affects survival.
+        Age and sex are independent confounders affecting survival probability.
+    ground_truth:
+      ate_range:
+        min: -0.25
+        max: -0.15
+      ate_tolerance: 0.5
+      graph_f1_threshold: 0.7
+      validation_pass_rate_threshold: 0.8
+    analysis_config:
+      analysis_types:
+        - "discovery"
+        - "treatment"
+        - "validation"
+      enable_preprocessing: true
+      preprocessing_config:
+        enable_imputation: true
+        enable_encoding: true
+        enable_scaling: true
+        enable_outlier_detection: false
+      override_quality_warnings: false
+    expected_characteristics:
+      missing_percent: 22.0
+      quality_issues:
+        - "high_missing"
+        - "categorical_encoding"
+      data_types:
+        Pclass: "categorical"
+        Survived: "binary"
+        Age: "numerical"
+        Sex: "categorical"
+        Fare: "numerical"
+        Embarked: "categorical"
+    stress_test_focus:
+      - "missing_values"
+      - "categorical_encoding"
+      - "class_imbalance"
+
+  # Dataset 2: Heart Disease - Medical confounders with outliers
+  heart_disease:
+    dataset_id: heart_disease
+    name: "Heart Disease Dataset"
+    kaggle_url: "https://www.kaggle.com/datasets/redwankarimsony/heart-disease-data"
+    description: >
+      Combined heart disease dataset with multiple clinical features.
+      Tests outlier handling (Cholesterol), medical confounder relationships,
+      and binary outcome prediction.
+    metadata:
+      rows: 918
+      columns: 12
+      size_mb: 0.05
+      kaggle_type: "dataset"
+      expected_file: "heart.csv"
+    causal_structure:
+      treatment: "Cholesterol"
+      outcome: "HeartDisease"
+      confounders:
+        - "Age"
+        - "Sex"
+        - "ChestPainType"
+        - "RestingBP"
+        - "ExerciseAngina"
+        - "FastingBS"
+      expected_edges:
+        - { source: "Age", target: "RestingBP" }
+        - { source: "Age", target: "Cholesterol" }
+        - { source: "RestingBP", target: "HeartDisease" }
+        - { source: "Cholesterol", target: "HeartDisease" }
+        - { source: "ExerciseAngina", target: "HeartDisease" }
+        - { source: "Age", target: "HeartDisease" }
+        - { source: "FastingBS", target: "HeartDisease" }
+      graph_description: >
+        Age affects resting blood pressure and cholesterol levels.
+        Cholesterol directly increases heart disease risk.
+        Exercise-induced angina and fasting blood sugar also affect heart disease.
+    ground_truth:
+      ate_range:
+        min: 0.05
+        max: 0.15
+      ate_tolerance: 0.5
+      graph_f1_threshold: 0.7
+      validation_pass_rate_threshold: 0.8
+    analysis_config:
+      analysis_types:
+        - "discovery"
+        - "treatment"
+        - "validation"
+      enable_preprocessing: true
+      preprocessing_config:
+        enable_imputation: true
+        enable_encoding: true
+        enable_scaling: true
+        enable_outlier_detection: true
+      override_quality_warnings: false
+    expected_characteristics:
+      missing_percent: 0.0
+      quality_issues:
+        - "outliers"
+        - "medical_confounders"
+      data_types:
+        Cholesterol: "numerical"
+        HeartDisease: "binary"
+        Age: "numerical"
+        Sex: "categorical"
+        ChestPainType: "categorical"
+        RestingBP: "numerical"
+        ExerciseAngina: "binary"
+        FastingBS: "binary"
+    stress_test_focus:
+      - "medical_confounders"
+      - "outlier_handling"
+      - "binary_outcome"
+
+  # Dataset 3: Pima Diabetes - Zero-inflated data with class imbalance
+  pima_diabetes:
+    dataset_id: pima_diabetes
+    name: "Pima Indians Diabetes Database"
+    kaggle_url: "https://www.kaggle.com/datasets/uciml/pima-indians-diabetes-database"
+    description: >
+      Diabetes prediction dataset with zero-inflated features (Glucose=0 as missing).
+      Tests preprocessing validation, class imbalance (65% negative),
+      and continuous treatment binarization.
+    metadata:
+      rows: 768
+      columns: 9
+      size_mb: 0.02
+      kaggle_type: "dataset"
+      expected_file: "diabetes.csv"
+    causal_structure:
+      treatment: "BMI"
+      outcome: "Outcome"
+      confounders:
+        - "Age"
+        - "Pregnancies"
+        - "Glucose"
+        - "BloodPressure"
+        - "Insulin"
+      expected_edges:
+        - { source: "BMI", target: "Insulin" }
+        - { source: "Insulin", target: "Outcome" }
+        - { source: "Age", target: "Pregnancies" }
+        - { source: "Pregnancies", target: "Outcome" }
+        - { source: "Glucose", target: "Outcome" }
+        - { source: "BMI", target: "Outcome" }
+      graph_description: >
+        BMI affects insulin levels which influence diabetes outcome.
+        Age affects number of pregnancies which influences outcome.
+        Glucose has a direct strong effect on diabetes diagnosis.
+    ground_truth:
+      ate_range:
+        min: 0.2
+        max: 0.4
+      ate_tolerance: 0.5
+      graph_f1_threshold: 0.7
+      validation_pass_rate_threshold: 0.8
+    analysis_config:
+      analysis_types:
+        - "discovery"
+        - "treatment"
+        - "validation"
+      enable_preprocessing: true
+      preprocessing_config:
+        enable_imputation: true
+        enable_encoding: false
+        enable_scaling: true
+        enable_outlier_detection: true
+      override_quality_warnings: true
+    expected_characteristics:
+      missing_percent: 0.0
+      quality_issues:
+        - "zero_inflated"
+        - "class_imbalance"
+        - "implicit_missing"
+      data_types:
+        BMI: "numerical"
+        Outcome: "binary"
+        Age: "numerical"
+        Pregnancies: "numerical"
+        Glucose: "numerical"
+        BloodPressure: "numerical"
+        Insulin: "numerical"
+    stress_test_focus:
+      - "zero_inflated_data"
+      - "class_imbalance"
+      - "preprocessing_validation"
+
+  # Dataset 4: Wine Quality - Continuous outcome with multi-modal distribution
+  wine_quality:
+    dataset_id: wine_quality
+    name: "Red Wine Quality"
+    kaggle_url: "https://www.kaggle.com/datasets/uciml/red-wine-quality-cortez-et-al-2009"
+    description: >
+      Red wine quality dataset with continuous outcome variable.
+      Tests continuous outcome handling, GES/PC algorithm comparison,
+      and multi-modal data distribution scenarios.
+    metadata:
+      rows: 1599
+      columns: 12
+      size_mb: 0.08
+      kaggle_type: "dataset"
+      expected_file: "winequality-red.csv"
+    causal_structure:
+      treatment: "alcohol"
+      outcome: "quality"
+      confounders:
+        - "pH"
+        - "fixed acidity"
+        - "volatile acidity"
+        - "density"
+        - "sulphates"
+      expected_edges:
+        - { source: "alcohol", target: "density" }
+        - { source: "density", target: "quality" }
+        - { source: "pH", target: "fixed acidity" }
+        - { source: "fixed acidity", target: "quality" }
+        - { source: "sulphates", target: "quality" }
+        - { source: "alcohol", target: "quality" }
+        - { source: "volatile acidity", target: "quality" }
+      graph_description: >
+        Alcohol content affects wine density and directly influences quality.
+        pH and fixed acidity are chemically related, affecting quality.
+        Sulphates and volatile acidity have direct effects on perceived quality.
+    ground_truth:
+      ate_range:
+        min: 0.3
+        max: 0.6
+      ate_tolerance: 0.5
+      graph_f1_threshold: 0.7
+      validation_pass_rate_threshold: 0.8
+    analysis_config:
+      analysis_types:
+        - "discovery"
+        - "treatment"
+        - "validation"
+      enable_preprocessing: true
+      preprocessing_config:
+        enable_imputation: false
+        enable_encoding: false
+        enable_scaling: true
+        enable_outlier_detection: true
+      override_quality_warnings: false
+    expected_characteristics:
+      missing_percent: 0.0
+      quality_issues:
+        - "multi_modal"
+        - "continuous_outcome"
+      data_types:
+        alcohol: "numerical"
+        quality: "numerical"
+        pH: "numerical"
+        "fixed acidity": "numerical"
+        "volatile acidity": "numerical"
+        density: "numerical"
+        sulphates: "numerical"
+    stress_test_focus:
+      - "continuous_outcome"
+      - "algorithm_comparison"
+      - "multi_modal_data"
+
+  # Dataset 5: Adult Census Income - Large dataset with high cardinality
+  adult_census:
+    dataset_id: adult_census
+    name: "Adult Census Income"
+    kaggle_url: "https://www.kaggle.com/datasets/uciml/adult-census-income"
+    description: >
+      Large census dataset for income prediction.
+      Tests high cardinality categorical encoding (occupation, native-country),
+      large dataset processing, and complex categorical confounders.
+    metadata:
+      rows: 48842
+      columns: 15
+      size_mb: 5.8
+      kaggle_type: "dataset"
+      expected_file: "adult.csv"
+    causal_structure:
+      treatment: "education"
+      outcome: "income"
+      confounders:
+        - "age"
+        - "hours-per-week"
+        - "occupation"
+        - "marital-status"
+        - "race"
+        - "sex"
+      expected_edges:
+        - { source: "education", target: "hours-per-week" }
+        - { source: "hours-per-week", target: "income" }
+        - { source: "age", target: "marital-status" }
+        - { source: "marital-status", target: "income" }
+        - { source: "occupation", target: "income" }
+        - { source: "education", target: "occupation" }
+        - { source: "education", target: "income" }
+      graph_description: >
+        Education level affects occupation choice and hours worked.
+        Age influences marital status which affects income.
+        Occupation has direct effect on income level.
+    ground_truth:
+      ate_range:
+        min: 0.15
+        max: 0.25
+      ate_tolerance: 0.5
+      graph_f1_threshold: 0.7
+      validation_pass_rate_threshold: 0.8
+    analysis_config:
+      analysis_types:
+        - "discovery"
+        - "treatment"
+        - "validation"
+      enable_preprocessing: true
+      preprocessing_config:
+        enable_imputation: true
+        enable_encoding: true
+        enable_scaling: true
+        enable_outlier_detection: false
+      override_quality_warnings: false
+    expected_characteristics:
+      missing_percent: 1.5
+      quality_issues:
+        - "high_cardinality"
+        - "categorical_confounders"
+      data_types:
+        education: "categorical"
+        income: "binary"
+        age: "numerical"
+        "hours-per-week": "numerical"
+        occupation: "categorical"
+        "marital-status": "categorical"
+        race: "categorical"
+        sex: "categorical"
+    stress_test_focus:
+      - "high_cardinality_encoding"
+      - "large_dataset"
+      - "categorical_confounders"
+
+  # Dataset 6: CausalML Example - Designed for causal inference validation
+  causalml_example:
+    dataset_id: causalml_example
+    name: "CausalML Package Example Dataset"
+    kaggle_url: "https://www.kaggle.com/datasets/vikasmalhotra08/causalml-package-example-dataset"
+    description: >
+      Dataset specifically designed for causal ML validation and uplift modeling.
+      Tests IV method validation, CATE estimation, and direct treatment effect
+      scenarios with known ground truth.
+    metadata:
+      rows: 1000
+      columns: 10
+      size_mb: 0.05
+      kaggle_type: "dataset"
+      expected_file: "causalml_data.csv"
+    causal_structure:
+      treatment: "treatment"
+      outcome: "conversion"
+      confounders:
+        - "age"
+        - "income"
+        - "recency"
+        - "history"
+      expected_edges:
+        - { source: "treatment", target: "conversion" }
+        - { source: "age", target: "conversion" }
+        - { source: "income", target: "conversion" }
+        - { source: "recency", target: "conversion" }
+        - { source: "history", target: "treatment" }
+        - { source: "history", target: "conversion" }
+      graph_description: >
+        Treatment (marketing offer) directly affects conversion.
+        Customer history influences both treatment assignment and conversion (confounder).
+        Age, income, and recency affect conversion probability.
+    ground_truth:
+      ate_range:
+        min: 0.05
+        max: 0.15
+      ate_tolerance: 0.5
+      graph_f1_threshold: 0.7
+      validation_pass_rate_threshold: 0.8
+    analysis_config:
+      analysis_types:
+        - "discovery"
+        - "treatment"
+        - "validation"
+      enable_preprocessing: true
+      preprocessing_config:
+        enable_imputation: false
+        enable_encoding: true
+        enable_scaling: true
+        enable_outlier_detection: false
+      override_quality_warnings: false
+    expected_characteristics:
+      missing_percent: 0.0
+      quality_issues: []
+      data_types:
+        treatment: "binary"
+        conversion: "binary"
+        age: "numerical"
+        income: "numerical"
+        recency: "numerical"
+        history: "numerical"
+    stress_test_focus:
+      - "iv_method_validation"
+      - "cate_estimation"
+      - "uplift_modeling"
+
+  # Dataset 7: Digital Marketing - Marketing confounders with multi-treatment
+  digital_marketing:
+    dataset_id: digital_marketing
+    name: "Causal Digital Marketing Campaign Dataset"
+    kaggle_url: "https://www.kaggle.com/datasets/rahuljangir78/causal-digital-marketing-campaign-dataset"
+    description: >
+      Digital marketing campaign dataset with marketing-specific confounders.
+      Tests multi-treatment scenarios, doubly robust estimation,
+      and marketing domain causal relationships.
+    metadata:
+      rows: 10000
+      columns: 20
+      size_mb: 0.8
+      kaggle_type: "dataset"
+      expected_file: "marketing_campaign.csv"
+    causal_structure:
+      treatment: "campaign_exposure"
+      outcome: "conversion"
+      confounders:
+        - "age"
+        - "income"
+        - "previous_purchases"
+        - "engagement_score"
+        - "device_type"
+      expected_edges:
+        - { source: "campaign_exposure", target: "engagement_score" }
+        - { source: "engagement_score", target: "conversion" }
+        - { source: "income", target: "previous_purchases" }
+        - { source: "previous_purchases", target: "conversion" }
+        - { source: "campaign_exposure", target: "conversion" }
+        - { source: "age", target: "income" }
+        - { source: "device_type", target: "engagement_score" }
+      graph_description: >
+        Campaign exposure increases engagement which drives conversion.
+        Income affects purchase history which influences conversion.
+        Device type affects how users engage with campaigns.
+    ground_truth:
+      ate_range:
+        min: 0.02
+        max: 0.08
+      ate_tolerance: 0.5
+      graph_f1_threshold: 0.7
+      validation_pass_rate_threshold: 0.8
+    analysis_config:
+      analysis_types:
+        - "discovery"
+        - "treatment"
+        - "validation"
+      enable_preprocessing: true
+      preprocessing_config:
+        enable_imputation: true
+        enable_encoding: true
+        enable_scaling: true
+        enable_outlier_detection: true
+      override_quality_warnings: false
+    expected_characteristics:
+      missing_percent: 2.0
+      quality_issues:
+        - "marketing_confounders"
+        - "multi_treatment"
+      data_types:
+        campaign_exposure: "binary"
+        conversion: "binary"
+        age: "numerical"
+        income: "numerical"
+        previous_purchases: "numerical"
+        engagement_score: "numerical"
+        device_type: "categorical"
+    stress_test_focus:
+      - "marketing_confounders"
+      - "multi_treatment"
+      - "doubly_robust_estimation"
+
+  # Dataset 8: Forest Cover Type - Large high-dimensional dataset
+  forest_cover:
+    dataset_id: forest_cover
+    name: "Forest Cover Type Dataset"
+    kaggle_url: "https://www.kaggle.com/datasets/uciml/forest-cover-type-dataset"
+    description: >
+      Large cartographic dataset for forest cover type prediction.
+      Tests sampling trigger (>500k rows), high-dimensional discovery (55 cols),
+      memory pressure scenarios, and FCI algorithm performance.
+    metadata:
+      rows: 581012
+      columns: 55
+      size_mb: 75.0
+      kaggle_type: "dataset"
+      expected_file: "covtype.csv"
+    causal_structure:
+      treatment: "Elevation"
+      outcome: "Cover_Type"
+      confounders:
+        - "Slope"
+        - "Horizontal_Distance_To_Hydrology"
+        - "Vertical_Distance_To_Hydrology"
+        - "Horizontal_Distance_To_Roadways"
+        - "Hillshade_9am"
+        - "Hillshade_Noon"
+        - "Aspect"
+      expected_edges:
+        - { source: "Elevation", target: "Slope" }
+        - { source: "Slope", target: "Cover_Type" }
+        - { source: "Elevation", target: "Cover_Type" }
+        - { source: "Horizontal_Distance_To_Hydrology", target: "Vertical_Distance_To_Hydrology" }
+        - { source: "Vertical_Distance_To_Hydrology", target: "Cover_Type" }
+        - { source: "Hillshade_9am", target: "Hillshade_Noon" }
+        - { source: "Aspect", target: "Hillshade_9am" }
+        - { source: "Elevation", target: "Hillshade_Noon" }
+      graph_description: >
+        Elevation affects slope and directly influences forest cover type.
+        Hydrological distances are correlated and affect vegetation.
+        Hillshade variables are related through sun angle and elevation.
+    ground_truth:
+      ate_range:
+        min: 0.1
+        max: 0.3
+      ate_tolerance: 0.5
+      graph_f1_threshold: 0.8
+      validation_pass_rate_threshold: 0.7
+    analysis_config:
+      analysis_types:
+        - "discovery"
+        - "treatment"
+        - "validation"
+      enable_preprocessing: true
+      preprocessing_config:
+        enable_imputation: false
+        enable_encoding: false
+        enable_scaling: true
+        enable_outlier_detection: false
+      override_quality_warnings: true
+    expected_characteristics:
+      missing_percent: 0.0
+      quality_issues:
+        - "high_dimensionality"
+        - "large_dataset"
+        - "one_hot_encoded"
+      data_types:
+        Elevation: "numerical"
+        Cover_Type: "categorical"
+        Slope: "numerical"
+        Horizontal_Distance_To_Hydrology: "numerical"
+        Vertical_Distance_To_Hydrology: "numerical"
+        Horizontal_Distance_To_Roadways: "numerical"
+        Hillshade_9am: "numerical"
+        Hillshade_Noon: "numerical"
+        Aspect: "numerical"
+    stress_test_focus:
+      - "sampling_trigger"
+      - "high_dimensional_discovery"
+      - "memory_pressure"
+      - "fci_algorithm"

@@ -282,9 +282,9 @@ def _load_dataframe(dataset) -> pd.DataFrame:
 
     # If preprocessed data not available via sync loader, try async GCS download
     # This handles cases where we're not in an async context but need GCS data
-    if dataset.metadata:
-        preprocessed_path = dataset.metadata.get("preprocessed_path")
-        preprocessed_gcs_path = dataset.metadata.get("preprocessed_gcs_path")
+    if dataset.dataset_metadata:
+        preprocessed_path = dataset.dataset_metadata.get("preprocessed_path")
+        preprocessed_gcs_path = dataset.dataset_metadata.get("preprocessed_gcs_path")
 
         if preprocessed_path and preprocessed_gcs_path:
             pp_path = Path(preprocessed_path)
@@ -312,7 +312,7 @@ def _load_dataframe(dataset) -> pd.DataFrame:
                     if pp_path.exists():
                         logger.info(
                             "Downloaded and loading preprocessed data from GCS for discovery",
-                            path=str(pp_path),
+                            file_path=str(pp_path),
                         )
                         return load_dataframe(pp_path)
                 except Exception as exc:
@@ -322,11 +322,11 @@ def _load_dataframe(dataset) -> pd.DataFrame:
                     )
 
     # Fall back to raw data
-    local_path = infer_local_path(dataset.metadata)
+    local_path = infer_local_path(dataset.dataset_metadata)
     if local_path and local_path.exists():
         logger.info(
             "Falling back to raw data for discovery",
-            path=str(local_path),
+            file_path=str(local_path),
         )
         return load_dataframe(local_path)
     raise ValueError("No dataset path available for discovery (checked local and GCS)")
@@ -337,14 +337,26 @@ def _prepare_matrix(df: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
 
     Assumes data is already preprocessed (numeric columns filled, categoricals encoded).
     Applies emergency fallback for any remaining issues.
+
+    IMPORTANT: Filters out zero-variance columns to avoid blowing up algorithm complexity.
+    The PC algorithm is O(n^d) where n is number of variables - zero-variance columns
+    add complexity without providing any causal information.
     """
     data = []
     names = []
+    dropped_zero_variance = []
 
     # Collect numeric columns (preprocessed data should already be numeric)
     numeric_df = df.select_dtypes(include=[np.number])
     for col in numeric_df.columns:
         series = numeric_df[col]
+
+        # Skip zero-variance columns - they provide no causal information
+        # and massively increase algorithm complexity
+        if series.std() == 0 or series.nunique() <= 1:
+            dropped_zero_variance.append(col)
+            continue
+
         # Emergency fallback: if missing values detected, log warning and fill
         if series.isna().any():
             logger.warning(
@@ -358,9 +370,13 @@ def _prepare_matrix(df: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
 
     # Handle any remaining categorical columns (fallback for non-preprocessed data)
     for col in df.columns:
-        if col in names:
+        if col in names or col in dropped_zero_variance:
             continue
         series = df[col]
+        # Skip zero-variance categorical columns too
+        if series.nunique() <= 1:
+            dropped_zero_variance.append(col)
+            continue
         if series.nunique() <= 20:
             logger.warning(
                 "Non-numeric column in discovery; applying emergency encoding",
@@ -370,8 +386,23 @@ def _prepare_matrix(df: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
             data.append(encoded)
             names.append(col)
 
+    if dropped_zero_variance:
+        logger.info(
+            "Dropped zero-variance columns for discovery (no causal information)",
+            dropped_count=len(dropped_zero_variance),
+            dropped_columns=dropped_zero_variance[:10],  # Show first 10
+        )
+
     if not data:
         raise ValueError("No usable columns for discovery")
+
+    logger.info(
+        "Prepared discovery matrix",
+        variable_count=len(names),
+        sample_count=len(df),
+        variables=names,
+    )
+
     matrix = np.column_stack(data)
     return matrix, names
 

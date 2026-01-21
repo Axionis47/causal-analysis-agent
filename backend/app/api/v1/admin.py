@@ -735,7 +735,7 @@ async def list_llm_logs(
             "cache_hit": log.cache_hit,
             "latency_ms": log.latency_ms,
             "error": log.error,
-            "metadata": log.metadata,
+            "log_metadata": log.log_metadata,
             "created_at": log.created_at.isoformat(),
         }
         for log in logs

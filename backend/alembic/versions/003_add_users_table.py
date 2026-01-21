@@ -25,6 +25,7 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("email", sa.String(length=255), nullable=False),
         sa.Column("hashed_password", sa.String(length=255), nullable=False),
+        sa.Column("display_name", sa.String(length=255), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),

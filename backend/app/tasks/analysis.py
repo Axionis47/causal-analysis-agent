@@ -4,6 +4,20 @@ import asyncio
 import uuid
 from datetime import datetime, timezone
 
+# ============================================================================
+# NetworkX compatibility patch for DoWhy
+# DoWhy 0.11.1 uses nx.algorithms.d_separated which was removed in NetworkX 3.x
+# The function was renamed to is_d_separator. This patch restores compatibility.
+# ============================================================================
+import networkx as nx
+
+if not hasattr(nx.algorithms, "d_separated"):
+    nx.algorithms.d_separated = lambda G, x, y, z: nx.is_d_separator(G, x, y, z)
+    # Also add to nx namespace for direct access (dowhy.gcm.falsify uses nx.d_separated)
+    if not hasattr(nx, "d_separated"):
+        nx.d_separated = lambda G, x, y, z: nx.is_d_separator(G, x, y, z)
+# ============================================================================
+
 from celery.exceptions import SoftTimeLimitExceeded
 
 from app.crud.analysis import analysis_crud

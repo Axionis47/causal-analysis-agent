@@ -47,12 +47,16 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - RATE_LIMIT_STORAGE_URL=redis://redis:6379/3
       - ENVIRONMENT=development
       - DEBUG=true
+      - LLM_PRIMARY_PROVIDER=vertex
+      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/application_default_credentials.json
     env_file:
       - .env
     volumes:
       - ./backend:/app
+      - ~/.config/gcloud/application_default_credentials.json:/gcp/application_default_credentials.json:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,10 +77,13 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
       - ENVIRONMENT=development
+      - LLM_PRIMARY_PROVIDER=vertex
+      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/application_default_credentials.json
     env_file:
       - .env
     volumes:
       - ./backend:/app
+      - ~/.config/gcloud/application_default_credentials.json:/gcp/application_default_credentials.json:ro
     depends_on:
       postgres:
         condition: service_healthy

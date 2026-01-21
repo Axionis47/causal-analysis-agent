@@ -192,7 +192,7 @@ class ValidationAgent(BaseAgent):
 
 
 def _load_dataframe(dataset) -> pd.DataFrame:
-    local_path = infer_local_path(dataset.metadata)
+    local_path = infer_local_path(dataset.dataset_metadata)
     if local_path and local_path.exists():
         return load_dataframe(local_path)
     raise ValueError("Local dataset path not found for validation")
